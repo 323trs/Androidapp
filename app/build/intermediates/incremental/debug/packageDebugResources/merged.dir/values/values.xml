@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">Tap Circle Game</string>
-    <style name="Theme.AndroidGame" parent="Theme.MaterialComponents.Light.NoActionBar">
-    </style>
-    <style name="Theme.App" parent="Theme.AppCompat.Light.NoActionBar">
-        
-    </style>
-</resources>

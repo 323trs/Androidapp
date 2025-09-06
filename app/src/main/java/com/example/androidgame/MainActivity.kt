@@ -1,29 +1,148 @@
 package com.example.androidgame
 
+import android.Manifest
+import android.content.ContentValues
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
-import android.webkit.WebChromeClient
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.provider.MediaStore
+import android.util.Log
+import android.widget.ImageButton
+import android.widget.ImageView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.core.*
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import java.text.SimpleDateFormat
+import java.util.*
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
-    private lateinit var webView: WebView
+
+    private lateinit var previewView: PreviewView
+    private lateinit var captureButton: ImageButton
+    private lateinit var switchButton: ImageButton
+    private lateinit var flashButton: ImageButton
+    private lateinit var thumbnail: ImageView
+
+    private var imageCapture: ImageCapture? = null
+    private var camera: Camera? = null
+    private var lensFacing = CameraSelector.DEFAULT_BACK_CAMERA
+
+    private lateinit var cameraExecutor: ExecutorService
+
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { perms ->
+        val granted = perms[Manifest.permission.CAMERA] == true
+        if (granted) startCamera() else finish()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
 
-        webView = WebView(this)
-        setContentView(webView)
+        previewView = findViewById(R.id.preview_view)
+        captureButton = findViewById(R.id.btn_capture)
+        switchButton = findViewById(R.id.btn_switch)
+        flashButton = findViewById(R.id.btn_flash)
+        thumbnail = findViewById(R.id.thumbnail)
 
-        webView.settings.javaScriptEnabled = true
-        webView.webViewClient = WebViewClient()
-        webView.webChromeClient = WebChromeClient()
+        cameraExecutor = Executors.newSingleThreadExecutor()
 
-        // Load the bundled HTML5 game from assets
-        webView.loadUrl("file:///android_asset/index.html")
+        if (allPermissionsGranted()) {
+            startCamera()
+        } else {
+            requestPermissions()
+        }
+
+        captureButton.setOnClickListener { takePhoto() }
+
+        switchButton.setOnClickListener {
+            lensFacing = if (lensFacing == CameraSelector.DEFAULT_BACK_CAMERA)
+                CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+            startCamera()
+        }
+
+        flashButton.setOnClickListener {
+            camera?.cameraControl?.enableTorch(!(camera?.cameraInfo?.torchState?.value == TorchState.ON))
+        }
     }
 
-    override fun onBackPressed() {
-        if (webView.canGoBack()) webView.goBack() else super.onBackPressed()
+    private fun allPermissionsGranted() =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+
+    private fun requestPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            requestPermissionLauncher.launch(arrayOf(Manifest.permission.CAMERA))
+        }
+    }
+
+    private fun startCamera() {
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+        cameraProviderFuture.addListener({
+            val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
+
+            val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
+
+            imageCapture = ImageCapture.Builder()
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                .build()
+
+            try {
+                cameraProvider.unbindAll()
+                camera = cameraProvider.bindToLifecycle(this, lensFacing, preview, imageCapture)
+            } catch (exc: Exception) {
+                Log.e("CameraX", "Use case binding failed", exc)
+            }
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun takePhoto() {
+        val imageCapture = imageCapture ?: return
+
+        val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+            .format(System.currentTimeMillis())
+
+        val contentValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "IMG_$name")
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/AndroidGame")
+            }
+        }
+
+        val outputOptions = ImageCapture.OutputFileOptions.Builder(
+            contentResolver,
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            contentValues
+        ).build()
+
+        imageCapture.takePicture(outputOptions, cameraExecutor, object : ImageCapture.OnImageSavedCallback {
+            override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                runOnUiThread {
+                    try {
+                        val savedUri: Uri? = outputFileResults.savedUri
+                        thumbnail.setImageURI(savedUri)
+                    } catch (e: Exception) {
+                        Log.e("CameraX", "Failed to set thumbnail", e)
+                    }
+                }
+            }
+
+            override fun onError(exception: ImageCaptureException) {
+                Log.e("CameraX", "Photo capture failed: ${exception.message}")
+            }
+        })
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        cameraExecutor.shutdown()
     }
 }

@@ -1,5 +1,12 @@
 R_DEF: Internal format may change without notice
 local
+id btn_capture
+id btn_flash
+id btn_switch
+id preview_view
+id root
+id thumbnail
+layout activity_main
 string app_name
 style Theme.AndroidGame
 style Theme.App

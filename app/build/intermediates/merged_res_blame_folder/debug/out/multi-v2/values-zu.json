@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.example.androidgame.app-mergeDebugResources-26:/values-zu/values-zu.xml",
+            "outputFile": "com.example.androidgame.app-mergeDebugResources-34:/values-zu/values-zu.xml",
             "map": [
                 {
                     "source": "/home/codespace/.gradle/caches/8.14.2/transforms/d21bacc33194d2d1cf31676fe7854e28/transformed/appcompat-1.6.1/res/values-zu/values-zu.xml",
