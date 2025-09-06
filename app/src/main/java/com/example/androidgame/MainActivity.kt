@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
+import android.widget.Toast
 import android.widget.ImageButton
 import android.widget.ImageView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -39,8 +40,13 @@ class MainActivity : AppCompatActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { perms ->
-        val granted = perms[Manifest.permission.CAMERA] == true
-        if (granted) startCamera() else finish()
+        val cameraGranted = perms[Manifest.permission.CAMERA] == true
+        if (cameraGranted) {
+            startCamera()
+        } else {
+            Toast.makeText(this, "Camera permission is required", Toast.LENGTH_LONG).show()
+            finish()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,7 +67,7 @@ class MainActivity : AppCompatActivity() {
             requestPermissions()
         }
 
-        captureButton.setOnClickListener { takePhoto() }
+    captureButton.setOnClickListener { try { takePhoto() } catch (e: Exception) { Toast.makeText(this, "Capture failed", Toast.LENGTH_SHORT).show(); Log.e("CameraX", "capture error", e) } }
 
         switchButton.setOnClickListener {
             lensFacing = if (lensFacing == CameraSelector.DEFAULT_BACK_CAMERA)
@@ -70,7 +76,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         flashButton.setOnClickListener {
-            camera?.cameraControl?.enableTorch(!(camera?.cameraInfo?.torchState?.value == TorchState.ON))
+            try {
+                val torchState = camera?.cameraInfo?.torchState?.value
+                camera?.cameraControl?.enableTorch(!(torchState == TorchState.ON))
+            } catch (e: Exception) {
+                Toast.makeText(this, "Flash not available", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -84,7 +95,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startCamera() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+    val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
             val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
 
@@ -99,12 +110,13 @@ class MainActivity : AppCompatActivity() {
                 camera = cameraProvider.bindToLifecycle(this, lensFacing, preview, imageCapture)
             } catch (exc: Exception) {
                 Log.e("CameraX", "Use case binding failed", exc)
+                runOnUiThread { Toast.makeText(this, "Camera start failed", Toast.LENGTH_SHORT).show() }
             }
         }, ContextCompat.getMainExecutor(this))
     }
 
     private fun takePhoto() {
-        val imageCapture = imageCapture ?: return
+    val imageCapture = imageCapture ?: run { Toast.makeText(this, "Camera not ready", Toast.LENGTH_SHORT).show(); return }
 
         val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
             .format(System.currentTimeMillis())
@@ -123,14 +135,15 @@ class MainActivity : AppCompatActivity() {
             contentValues
         ).build()
 
-        imageCapture.takePicture(outputOptions, cameraExecutor, object : ImageCapture.OnImageSavedCallback {
+    imageCapture.takePicture(outputOptions, cameraExecutor, object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
                 runOnUiThread {
                     try {
-                        val savedUri: Uri? = outputFileResults.savedUri
-                        thumbnail.setImageURI(savedUri)
+            val savedUri: Uri? = outputFileResults.savedUri
+            if (savedUri != null) thumbnail.setImageURI(savedUri) else Toast.makeText(this@MainActivity, "Saved, but URI unavailable", Toast.LENGTH_SHORT).show()
                     } catch (e: Exception) {
                         Log.e("CameraX", "Failed to set thumbnail", e)
+            runOnUiThread { Toast.makeText(this@MainActivity, "Failed to show thumbnail", Toast.LENGTH_SHORT).show() }
                     }
                 }
             }
